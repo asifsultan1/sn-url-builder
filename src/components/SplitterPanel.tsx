@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Copy, Check, ExternalLink, Scissors, AlertTriangle, X, Download, Bookmark, Trash2 } from "lucide-react";
+import { Copy, Check, ExternalLink, Scissors, AlertTriangle, X, Download, Bookmark, Trash2, RotateCcw } from "lucide-react";
 import { parseUrl } from "../parser";
 import { buildUrl } from "../encoder";
 import { getSplittableFilters, splitModel, splitModelByLength } from "../splitter";
@@ -12,11 +12,13 @@ type SplitMode = "chunk" | "length" | "group";
 
 interface SplitResult {
   model: SearchModel;
-  label?: string; // group name
+  label?: string;
 }
 
 const CHUNK_PRESETS = [5, 10, 15, 20, 25];
 const LENGTH_PRESETS = [2000, 3000, 4000, 5000, 6000];
+// LinkedIn appends recentSearchParam + sessionId when a URL is opened (~100–120 chars). Use 200 to be safe.
+const LI_OVERHEAD = 200;
 
 const LS_KEY = "sn-splitter-saved-urls";
 
@@ -37,7 +39,7 @@ const GROUP_PALETTE = [
   { bg: "bg-orange-50", border: "border-orange-200", text: "text-orange-700", badge: "bg-orange-100 text-orange-800 border border-orange-300" },
 ];
 
-// ─── Shared filter pills ──────────────────────────────────────────────────────
+// ─── Shared filter pills (read-only, used in result cards) ────────────────────
 
 function FilterPills({ filter, defMap }: { filter: Filter; defMap: Map<string, FilterDef> }) {
   const label = defMap.get(filter.type)?.label ?? filter.type;
@@ -64,27 +66,87 @@ function FilterPills({ filter, defMap }: { filter: Filter; defMap: Map<string, F
   );
 }
 
-// ─── URL filter preview ───────────────────────────────────────────────────────
+// ─── Editable filter preview ──────────────────────────────────────────────────
 
-function FilterPreview({ model, defMap, highlightType }: {
-  model: SearchModel; defMap: Map<string, FilterDef>; highlightType?: string;
+function FilterPreview({ model, defMap, highlightType, excludedValues, onToggleValue }: {
+  model: SearchModel;
+  defMap: Map<string, FilterDef>;
+  highlightType?: string;
+  excludedValues?: Record<string, number[]>;
+  onToggleValue?: (filterType: string, valueIndex: number) => void;
 }) {
+  const editable = !!onToggleValue;
+  const totalExcluded = Object.values(excludedValues ?? {}).reduce((a, v) => a + v.length, 0);
+
   if (!model.filters.length && !model.keywords)
     return <p className="text-sm text-gray-400 italic">No filters found.</p>;
+
   return (
     <div className="space-y-3">
+      {editable && totalExcluded > 0 && (
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 flex items-center gap-1.5">
+          <AlertTriangle size={11} className="shrink-0" />
+          {totalExcluded} value{totalExcluded !== 1 ? "s" : ""} removed — greyed below. Click ↩ to restore.
+        </p>
+      )}
       {model.keywords && (
         <div>
           <p className="text-[11px] font-semibold text-gray-500 mb-1">Keywords</p>
           <span className="text-xs bg-blue-50 text-blue-800 border border-blue-200 rounded px-1.5 py-0.5">{model.keywords}</span>
         </div>
       )}
-      {model.filters.map((f) => (
-        <div key={f.type} className={f.type === highlightType ? "ring-2 ring-li-blue rounded-md p-2 -mx-2" : undefined}>
-          <FilterPills filter={f} defMap={defMap} />
-          {f.type === highlightType && <p className="text-[10px] text-li-blue mt-1">← will be split</p>}
-        </div>
-      ))}
+      {model.filters.map((f) => {
+        const excSet = new Set(excludedValues?.[f.type] ?? []);
+        const activeCount = f.values ? f.values.length - excSet.size : undefined;
+        return (
+          <div key={f.type} className={f.type === highlightType ? "ring-2 ring-li-blue rounded-md p-2 -mx-2" : undefined}>
+            <p className="text-[11px] font-semibold text-gray-500 mb-1">
+              {defMap.get(f.type)?.label ?? f.type}
+              {f.values && (
+                <span className="ml-1 font-normal text-gray-400">
+                  ({activeCount}{excSet.size > 0 ? `, ${excSet.size} removed` : ""})
+                </span>
+              )}
+            </p>
+            {f.range ? (
+              <span className="text-[11px] bg-gray-100 text-gray-600 rounded px-1.5 py-0.5">
+                {f.range.min}–{f.range.max}{f.sub ? ` ${f.sub}` : ""}
+              </span>
+            ) : (
+              <div className="flex flex-wrap gap-1">
+                {(f.values ?? []).map((v, i) => {
+                  const isRemoved = excSet.has(i);
+                  return (
+                    <span
+                      key={i}
+                      className={`inline-flex items-center gap-0.5 text-[11px] rounded px-1.5 py-0.5 border ${
+                        isRemoved
+                          ? "bg-gray-100 text-gray-400 border-gray-200 line-through"
+                          : v.mode === "EXCLUDED"
+                          ? "bg-red-50 text-red-700 border-red-200"
+                          : "bg-green-50 text-green-800 border-green-200"
+                      }`}
+                    >
+                      {!isRemoved && (v.mode === "EXCLUDED" ? "−" : "+")} {v.text || v.id}
+                      {editable && (
+                        <button
+                          type="button"
+                          onClick={() => onToggleValue!(f.type, i)}
+                          className="ml-0.5 opacity-50 hover:opacity-100 leading-none"
+                          title={isRemoved ? "Restore" : "Remove from active search"}
+                        >
+                          {isRemoved ? "↩" : <X size={9} />}
+                        </button>
+                      )}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+            {f.type === highlightType && <p className="text-[10px] text-li-blue mt-1">← will be split</p>}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -108,10 +170,7 @@ function GroupSplitter({ model, filterType, defMap, onResults }: {
   const [pendingName, setPendingName] = useState("");
   const [search, setSearch] = useState("");
 
-  const assignedSet = useMemo(
-    () => new Set(groups.flatMap((g) => g.indices)),
-    [groups]
-  );
+  const assignedSet = useMemo(() => new Set(groups.flatMap((g) => g.indices)), [groups]);
 
   const unassigned = useMemo(
     () => values.map((v, i) => ({ v, i })).filter(({ i }) => !assignedSet.has(i)),
@@ -170,33 +229,21 @@ function GroupSplitter({ model, filterType, defMap, onResults }: {
 
   return (
     <div className="space-y-4">
-      {/* Value picker */}
       <div className="bg-white border border-li-border rounded-lg p-4 space-y-3">
         <div className="flex items-center gap-2 flex-wrap">
           <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
             Unassigned {def?.label ?? filterType} values
           </h4>
-          <span className="text-[11px] bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">
-            {unassigned.length} remaining
-          </span>
+          <span className="text-[11px] bg-gray-100 text-gray-500 rounded px-1.5 py-0.5">{unassigned.length} remaining</span>
           {selected.size > 0 && (
-            <span className="text-[11px] bg-li-blue text-white rounded px-1.5 py-0.5">
-              {selected.size} selected
-            </span>
+            <span className="text-[11px] bg-li-blue text-white rounded px-1.5 py-0.5">{selected.size} selected</span>
           )}
-          <InfoTip
-            align="left"
-            text="Click values to select them, then create a named group. Repeat until all values are sorted. Each group becomes one output URL."
-          />
+          <InfoTip align="left" text="Click values to select them, then create a named group. Repeat until all values are sorted. Each group becomes one output URL." />
         </div>
 
-        <input
-          type="text"
-          placeholder="Search values…"
-          value={search}
+        <input type="text" placeholder="Search values…" value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full text-sm border border-li-border rounded-md px-2.5 py-1.5 focus:outline-none focus:border-li-blue"
-        />
+          className="w-full text-sm border border-li-border rounded-md px-2.5 py-1.5 focus:outline-none focus:border-li-blue" />
 
         <div className="flex flex-wrap gap-1.5 max-h-52 overflow-y-auto pr-1">
           {visible.length === 0 && (
@@ -207,18 +254,12 @@ function GroupSplitter({ model, filterType, defMap, onResults }: {
           {visible.map(({ v, i }) => {
             const isSel = selected.has(i);
             return (
-              <button
-                key={i}
-                type="button"
-                onClick={() => toggle(i)}
+              <button key={i} type="button" onClick={() => toggle(i)}
                 className={`text-[11px] rounded-md px-2 py-1 border transition-colors ${
-                  isSel
-                    ? "bg-li-blue text-white border-li-blue shadow-sm"
-                    : v.mode === "EXCLUDED"
-                    ? "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
-                    : "bg-gray-50 text-gray-700 border-li-border hover:bg-gray-100"
-                }`}
-              >
+                  isSel ? "bg-li-blue text-white border-li-blue shadow-sm"
+                  : v.mode === "EXCLUDED" ? "bg-red-50 text-red-700 border-red-200 hover:bg-red-100"
+                  : "bg-gray-50 text-gray-700 border-li-border hover:bg-gray-100"
+                }`}>
                 {v.text || v.id}
               </button>
             );
@@ -226,33 +267,20 @@ function GroupSplitter({ model, filterType, defMap, onResults }: {
         </div>
 
         <div className="flex items-center gap-3 text-xs text-gray-400">
-          <button type="button" onClick={() => setSelected(new Set(visible.map(({ i }) => i)))} className="hover:text-li-blue">
-            Select all visible
-          </button>
+          <button type="button" onClick={() => setSelected(new Set(visible.map(({ i }) => i)))} className="hover:text-li-blue">Select all visible</button>
           <span>·</span>
-          <button type="button" onClick={() => setSelected(new Set())} className="hover:text-gray-600">
-            Clear
-          </button>
+          <button type="button" onClick={() => setSelected(new Set())} className="hover:text-gray-600">Clear</button>
         </div>
 
-        {/* Create / add-to-group controls */}
         {selected.size > 0 && (
           <div className="pt-2 border-t border-li-border space-y-2">
             <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="New group name (e.g. Ecommerce)"
-                value={pendingName}
+              <input type="text" placeholder="New group name (e.g. Ecommerce)" value={pendingName}
                 onChange={(e) => setPendingName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && createGroup()}
-                className="flex-1 text-sm border border-li-border rounded-md px-2.5 py-1.5 focus:outline-none focus:border-li-blue"
-              />
-              <button
-                type="button"
-                onClick={createGroup}
-                disabled={!pendingName.trim()}
-                className="px-3 py-1.5 rounded-md bg-li-blue text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-              >
+                className="flex-1 text-sm border border-li-border rounded-md px-2.5 py-1.5 focus:outline-none focus:border-li-blue" />
+              <button type="button" onClick={createGroup} disabled={!pendingName.trim()}
+                className="px-3 py-1.5 rounded-md bg-li-blue text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
                 + Create Group
               </button>
             </div>
@@ -262,12 +290,8 @@ function GroupSplitter({ model, filterType, defMap, onResults }: {
                 {groups.map((g, gi) => {
                   const c = GROUP_PALETTE[gi % GROUP_PALETTE.length];
                   return (
-                    <button
-                      key={g.id}
-                      type="button"
-                      onClick={() => addToGroup(g.id)}
-                      className={`text-[11px] rounded px-2 py-0.5 border ${c.badge} hover:opacity-80`}
-                    >
+                    <button key={g.id} type="button" onClick={() => addToGroup(g.id)}
+                      className={`text-[11px] rounded px-2 py-0.5 border ${c.badge} hover:opacity-80`}>
                       {g.name}
                     </button>
                   );
@@ -278,20 +302,14 @@ function GroupSplitter({ model, filterType, defMap, onResults }: {
         )}
       </div>
 
-      {/* Groups */}
       {groups.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Groups ({groups.length})
-            </h4>
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Groups ({groups.length})</h4>
             {unassigned.length === 0 && (
-              <span className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded px-1.5 py-0.5">
-                All values assigned ✓
-              </span>
+              <span className="text-[11px] text-green-700 bg-green-50 border border-green-200 rounded px-1.5 py-0.5">All values assigned ✓</span>
             )}
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {groups.map((g, gi) => {
               const c = GROUP_PALETTE[gi % GROUP_PALETTE.length];
@@ -300,13 +318,9 @@ function GroupSplitter({ model, filterType, defMap, onResults }: {
               return (
                 <div key={g.id} className={`border rounded-lg p-3 space-y-2 ${c.bg} ${c.border}`}>
                   <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={g.name}
-                      onChange={(e) => renameGroup(g.id, e.target.value)}
+                    <input type="text" value={g.name} onChange={(e) => renameGroup(g.id, e.target.value)}
                       className={`font-semibold text-sm bg-transparent border-b border-transparent hover:border-current focus:outline-none focus:border-current ${c.text} flex-1 min-w-0`}
-                      title="Click to rename"
-                    />
+                      title="Click to rename" />
                     <span className="text-[11px] text-gray-500 shrink-0">{g.indices.length} values</span>
                     {urlInfo && (
                       <span className={`text-[11px] rounded px-1.5 py-0.5 shrink-0 ${isTooLong ? "bg-amber-100 text-amber-700" : "bg-white/70 text-gray-500"}`}>
@@ -337,7 +351,6 @@ function GroupSplitter({ model, filterType, defMap, onResults }: {
         </div>
       )}
 
-      {/* Warnings + generate */}
       {groups.length > 0 && (
         <div className="space-y-2">
           {unassigned.length > 0 && (
@@ -346,11 +359,8 @@ function GroupSplitter({ model, filterType, defMap, onResults }: {
               {unassigned.length} values not assigned to any group — they will be excluded from all output URLs.
             </p>
           )}
-          <button
-            type="button"
-            onClick={generate}
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-li-blue text-white text-sm font-medium hover:bg-blue-700 transition-colors"
-          >
+          <button type="button" onClick={generate}
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md bg-li-blue text-white text-sm font-medium hover:bg-blue-700 transition-colors">
             <Scissors size={14} /> Generate {groups.length} Group URL{groups.length !== 1 ? "s" : ""}
           </button>
         </div>
@@ -362,13 +372,8 @@ function GroupSplitter({ model, filterType, defMap, onResults }: {
 // ─── Split result card ────────────────────────────────────────────────────────
 
 function SplitResultCard({ index, total, result, defMap, splitFilterType, isCopied, onCopy }: {
-  index: number;
-  total: number;
-  result: SplitResult;
-  defMap: Map<string, FilterDef>;
-  splitFilterType: string;
-  isCopied: boolean;
-  onCopy: () => void;
+  index: number; total: number; result: SplitResult; defMap: Map<string, FilterDef>;
+  splitFilterType: string; isCopied: boolean; onCopy: () => void;
 }) {
   const { model, label } = result;
   const url = buildUrl(model);
@@ -380,11 +385,7 @@ function SplitResultCard({ index, total, result, defMap, splitFilterType, isCopi
   return (
     <div className="bg-white border border-li-border rounded-lg p-4 space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
-        {label ? (
-          <span className="font-semibold text-sm">{label}</span>
-        ) : (
-          <span className="font-semibold text-sm">URL {index + 1} of {total}</span>
-        )}
+        {label ? <span className="font-semibold text-sm">{label}</span> : <span className="font-semibold text-sm">URL {index + 1} of {total}</span>}
         {splitFilter?.values && (
           <span className="text-xs text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">
             {splitFilter.values.length} {splitDef?.label ?? splitFilterType} values
@@ -403,12 +404,8 @@ function SplitResultCard({ index, total, result, defMap, splitFilterType, isCopi
 
       {otherFilters.length > 0 && (
         <div className="space-y-3 pb-3 border-b border-li-border">
-          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
-            Other filters (unchanged in every URL)
-          </p>
-          {otherFilters.map((f: Filter) => (
-            <FilterPills key={f.type} filter={f} defMap={defMap} />
-          ))}
+          <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Other filters (unchanged in every URL)</p>
+          {otherFilters.map((f: Filter) => <FilterPills key={f.type} filter={f} defMap={defMap} />)}
         </div>
       )}
 
@@ -450,18 +447,54 @@ export function SplitterPanel() {
   const [savedUrls, setSavedUrls] = useState<SavedUrl[]>(loadSaved);
   const [saveName, setSaveName] = useState("");
   const [showSaveInput, setShowSaveInput] = useState(false);
+  const [excludedValues, setExcludedValues] = useState<Record<string, number[]>>({});
 
   const parsed = useMemo(() => {
     if (!url.trim()) return null;
     try { return parseUrl(url.trim()); } catch { return null; }
   }, [url]);
 
+  // Active model: parsed with excluded values removed
+  const activeModel = useMemo((): SearchModel | null => {
+    if (!parsed) return null;
+    return {
+      ...parsed,
+      filters: parsed.filters
+        .map((f) => {
+          const excIdx = excludedValues[f.type];
+          if (!excIdx?.length || !f.values) return f;
+          return { ...f, values: f.values.filter((_, i) => !excIdx.includes(i)) };
+        })
+        .filter((f) => f.range !== undefined || !f.values || f.values.length > 0),
+    };
+  }, [parsed, excludedValues]);
+
+  const activeUrl = useMemo(() => activeModel ? buildUrl(activeModel) : "", [activeModel]);
+  const totalExcluded = useMemo(
+    () => Object.values(excludedValues).reduce((a, v) => a + v.length, 0),
+    [excludedValues]
+  );
+
+  const toggleValue = (filterType: string, valueIndex: number) => {
+    setExcludedValues((prev) => {
+      const current = prev[filterType] ?? [];
+      const isExcluded = current.includes(valueIndex);
+      return {
+        ...prev,
+        [filterType]: isExcluded ? current.filter((i) => i !== valueIndex) : [...current, valueIndex],
+      };
+    });
+    setSplitResults([]);
+  };
+
+  const resetExcluded = () => { setExcludedValues({}); setSplitResults([]); };
+
   const defMap = useMemo(
     () => parsed ? new Map(CATALOG[parsed.kind].map((d) => [d.type, d])) : new Map<string, FilterDef>(),
     [parsed]
   );
 
-  const splittable = useMemo(() => parsed ? getSplittableFilters(parsed) : [], [parsed]);
+  const splittable = useMemo(() => activeModel ? getSplittableFilters(activeModel) : [], [activeModel]);
 
   const activeSplitFilter = useMemo(() => {
     if (!splittable.length) return "";
@@ -469,20 +502,22 @@ export function SplitterPanel() {
     return splittable[0].type;
   }, [splittable, splitFilterType]);
 
+  const effectiveMaxLength = maxLength - LI_OVERHEAD;
+
   const previewCount = useMemo(() => {
-    if (!parsed || !activeSplitFilter || splitMode === "group") return 0;
+    if (!activeModel || !activeSplitFilter || splitMode === "group") return 0;
     if (splitMode === "chunk") {
-      const t = parsed.filters.find((f) => f.type === activeSplitFilter);
+      const t = activeModel.filters.find((f) => f.type === activeSplitFilter);
       return t?.values ? Math.ceil(t.values.length / chunkSize) : 0;
     }
-    return splitModelByLength(parsed, activeSplitFilter, maxLength).length;
-  }, [parsed, activeSplitFilter, splitMode, chunkSize, maxLength]);
+    return splitModelByLength(activeModel, activeSplitFilter, effectiveMaxLength).length;
+  }, [activeModel, activeSplitFilter, splitMode, chunkSize, effectiveMaxLength]);
 
   const doSplit = () => {
-    if (!parsed || !activeSplitFilter) return;
+    if (!activeModel || !activeSplitFilter) return;
     const models = splitMode === "chunk"
-      ? splitModel(parsed, activeSplitFilter, chunkSize)
-      : splitModelByLength(parsed, activeSplitFilter, maxLength);
+      ? splitModel(activeModel, activeSplitFilter, chunkSize)
+      : splitModelByLength(activeModel, activeSplitFilter, effectiveMaxLength);
     setSplitResults(models.map((m) => ({ model: m })));
     setCopiedIdx(null);
   };
@@ -502,11 +537,11 @@ export function SplitterPanel() {
   };
 
   const exportJson = () => {
-    if (!parsed) return;
-    const blob = new Blob([JSON.stringify(parsed, null, 2)], { type: "application/json" });
+    if (!activeModel) return;
+    const blob = new Blob([JSON.stringify(activeModel, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `sn-${parsed.kind}-filters.json`;
+    a.download = `sn-${activeModel.kind}-filters.json`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -530,6 +565,7 @@ export function SplitterPanel() {
   const loadSavedUrl = (savedUrl: string) => {
     setUrl(savedUrl);
     setSplitResults([]);
+    setExcludedValues({});
     setShowSaveInput(false);
   };
 
@@ -538,73 +574,63 @@ export function SplitterPanel() {
       {/* URL input */}
       <div className="bg-white border border-li-border rounded-lg p-4 space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-xs font-semibold text-gray-500">
-            Paste a Sales Navigator URL to split
-          </label>
+          <label className="text-xs font-semibold text-gray-500">Paste a Sales Navigator URL to split</label>
           {url.trim() && (
-            <button
-              type="button"
-              onClick={() => { setUrl(""); setSplitResults([]); setShowSaveInput(false); }}
-              className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600"
-            >
+            <button type="button"
+              onClick={() => { setUrl(""); setSplitResults([]); setShowSaveInput(false); setExcludedValues({}); }}
+              className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600">
               <X size={12} /> Clear
             </button>
           )}
         </div>
-        <textarea
-          value={url}
-          onChange={(e) => { setUrl(e.target.value); setSplitResults([]); }}
-          rows={4}
-          placeholder="https://www.linkedin.com/sales/search/people?query=..."
-          className="w-full text-xs font-mono bg-gray-50 border border-li-border rounded-md p-2 break-all resize-none focus:outline-none focus:border-li-blue"
-        />
+        <textarea value={url}
+          onChange={(e) => { setUrl(e.target.value); setSplitResults([]); setExcludedValues({}); }}
+          rows={4} placeholder="https://www.linkedin.com/sales/search/people?query=..."
+          className="w-full text-xs font-mono bg-gray-50 border border-li-border rounded-md p-2 break-all resize-none focus:outline-none focus:border-li-blue" />
         {url.trim() && !parsed && <p className="text-xs text-red-600">Could not parse this URL.</p>}
         {parsed && (
           <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500">
             <span className="capitalize font-medium text-li-blue">{parsed.kind} search</span>
-            <span>{parsed.filters.length} filters</span>
-            <span>{parsed.filters.reduce((a, f) => a + (f.range ? 1 : (f.values?.length ?? 0)), 0)} values total</span>
-            <span>{url.trim().length.toLocaleString()} chars</span>
-            {url.trim().length > 8000 && <span className="text-amber-700 font-medium">⚠ Very long — splitting recommended</span>}
+            <span>{activeModel?.filters.length ?? 0} filters</span>
+            <span>{(activeModel?.filters ?? []).reduce((a, f) => a + (f.range ? 1 : (f.values?.length ?? 0)), 0)} values total</span>
+            <span className={totalExcluded > 0 ? "text-amber-600 font-medium" : ""}>
+              {activeUrl.length.toLocaleString()} chars
+              {totalExcluded > 0 && ` (${totalExcluded} removed)`}
+            </span>
+            {totalExcluded > 0 && (
+              <button type="button" onClick={resetExcluded}
+                className="inline-flex items-center gap-0.5 text-[11px] text-gray-400 hover:text-li-blue">
+                <RotateCcw size={10} /> Restore all
+              </button>
+            )}
+            {activeUrl.length > 8000 && <span className="text-amber-700 font-medium">⚠ Very long — splitting recommended</span>}
           </div>
         )}
       </div>
 
-      {/* Utility bar: JSON export + save URL */}
+      {/* Utility bar */}
       {parsed && (
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={exportJson}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-li-border bg-white text-sm hover:bg-gray-50"
-          >
+          <button type="button" onClick={exportJson}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-li-border bg-white text-sm hover:bg-gray-50">
             <Download size={14} /> Export filter model as JSON
           </button>
           {!showSaveInput ? (
-            <button
-              type="button"
-              onClick={() => setShowSaveInput(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-li-border bg-white text-sm hover:bg-gray-50"
-            >
+            <button type="button" onClick={() => setShowSaveInput(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-li-border bg-white text-sm hover:bg-gray-50">
               <Bookmark size={14} /> Save URL
             </button>
           ) : (
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <input
-                type="text"
-                autoFocus
-                placeholder="Name this search…"
-                value={saveName}
+              <input type="text" autoFocus placeholder="Name this search…" value={saveName}
                 onChange={(e) => setSaveName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") saveUrl(); if (e.key === "Escape") setShowSaveInput(false); }}
-                className="flex-1 min-w-0 text-sm border border-li-border rounded-md px-2.5 py-1.5 focus:outline-none focus:border-li-blue"
-              />
+                className="flex-1 min-w-0 text-sm border border-li-border rounded-md px-2.5 py-1.5 focus:outline-none focus:border-li-blue" />
               <button type="button" onClick={saveUrl} disabled={!saveName.trim()}
                 className="px-3 py-1.5 rounded-md bg-li-blue text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-40 whitespace-nowrap">
                 Save
               </button>
-              <button type="button" onClick={() => setShowSaveInput(false)}
-                className="text-gray-400 hover:text-gray-600">
+              <button type="button" onClick={() => setShowSaveInput(false)} className="text-gray-400 hover:text-gray-600">
                 <X size={16} />
               </button>
             </div>
@@ -630,12 +656,8 @@ export function SplitterPanel() {
                   <p className="text-sm font-medium text-gray-700 truncate">{s.name}</p>
                   <p className="text-[11px] text-gray-400 truncate">{s.url}</p>
                 </div>
-                <button type="button" onClick={() => loadSavedUrl(s.url)}
-                  className="text-xs text-li-blue hover:underline shrink-0">
-                  Load
-                </button>
-                <button type="button" onClick={() => deleteSaved(s.id)}
-                  className="text-gray-400 hover:text-red-500 shrink-0">
+                <button type="button" onClick={() => loadSavedUrl(s.url)} className="text-xs text-li-blue hover:underline shrink-0">Load</button>
+                <button type="button" onClick={() => deleteSaved(s.id)} className="text-gray-400 hover:text-red-500 shrink-0">
                   <Trash2 size={13} />
                 </button>
               </div>
@@ -644,13 +666,22 @@ export function SplitterPanel() {
         </div>
       )}
 
-      {parsed && (
+      {parsed && activeModel && (
         <>
           {/* Two-column: filter preview + split settings */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="bg-white border border-li-border rounded-lg p-4 space-y-3">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Filter Preview</h3>
-              <FilterPreview model={parsed} defMap={defMap} highlightType={activeSplitFilter} />
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Filter Preview</h3>
+                <InfoTip align="left" text="Click × on any value to remove it from the active search — the char count updates live. Removed values show greyed-out; click ↩ to restore. Only active values are used when splitting." />
+              </div>
+              <FilterPreview
+                model={parsed}
+                defMap={defMap}
+                highlightType={activeSplitFilter}
+                excludedValues={excludedValues}
+                onToggleValue={toggleValue}
+              />
             </div>
 
             <div className="bg-white border border-li-border rounded-lg p-4 space-y-4">
@@ -660,17 +691,13 @@ export function SplitterPanel() {
                 <p className="text-sm text-gray-400 italic">No splittable filters found — need a list filter with more than one value.</p>
               ) : (
                 <>
-                  {/* Filter to split */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-gray-600 flex items-center gap-1">
                       Filter to split
                       <InfoTip align="left" text="The filter whose values will be divided across multiple URLs. All other filters stay the same in every output URL. Auto-selects the filter with the most values." />
                     </label>
-                    <select
-                      value={activeSplitFilter}
-                      onChange={(e) => setSplitFilterType(e.target.value)}
-                      className="w-full text-sm border border-li-border rounded-md px-2.5 py-1.5 focus:outline-none focus:border-li-blue bg-white"
-                    >
+                    <select value={activeSplitFilter} onChange={(e) => setSplitFilterType(e.target.value)}
+                      className="w-full text-sm border border-li-border rounded-md px-2.5 py-1.5 focus:outline-none focus:border-li-blue bg-white">
                       {splittable.map((s) => (
                         <option key={s.type} value={s.type}>
                           {defMap.get(s.type)?.label ?? s.type} ({s.count} values)
@@ -679,11 +706,10 @@ export function SplitterPanel() {
                     </select>
                   </div>
 
-                  {/* Mode toggle */}
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-gray-600 flex items-center gap-1">
                       Split by
-                      <InfoTip align="left" text="Values per chunk: even slices of N values each. Max URL length: greedy fill up to a character limit. By persona: you manually sort values into named groups — best when titles belong to distinct audiences." />
+                      <InfoTip align="left" text="Values per chunk: even slices of N values each. Max URL length: greedy fill up to a character limit (with LinkedIn overhead reserved). By persona: manually sort values into named groups." />
                     </label>
                     <div className="inline-flex rounded-md border border-li-border overflow-hidden text-xs">
                       {(["chunk", "length", "group"] as const).map((m) => (
@@ -699,7 +725,7 @@ export function SplitterPanel() {
                     <div className="space-y-2">
                       <label className="text-xs font-medium text-gray-600 flex items-center gap-1">
                         Values per chunk
-                        <InfoTip align="left" text="A 'value' is one entry in a filter — e.g. one job title, one country, one industry. This controls how many values from the split filter go into each output URL. Fewer values = shorter URLs = more URLs total." />
+                        <InfoTip align="left" text="A 'value' is one entry in a filter — e.g. one job title, one country, one industry. Fewer values = shorter URLs = more URLs total." />
                       </label>
                       <div className="flex gap-1.5 flex-wrap">
                         {CHUNK_PRESETS.map((n) => (
@@ -719,7 +745,7 @@ export function SplitterPanel() {
                     <div className="space-y-2">
                       <label className="text-xs font-medium text-gray-600 flex items-center gap-1">
                         Max URL length (chars)
-                        <InfoTip align="left" text="The maximum number of characters allowed in each output URL. Values are added one by one until the next value would push the URL over this limit — then a new URL starts. Check your scraper's docs for its limit; common limits are 2,000–8,000 chars." />
+                        <InfoTip align="left" text="Your scraper's URL length limit. We automatically subtract 200 chars to account for the recentSearchParam and sessionId that LinkedIn appends when you open the URL — so each output URL is guaranteed to stay well under your target." />
                       </label>
                       <div className="flex gap-1.5 flex-wrap">
                         {LENGTH_PRESETS.map((n) => (
@@ -728,10 +754,14 @@ export function SplitterPanel() {
                             {n.toLocaleString()}
                           </button>
                         ))}
-                        <input type="number" min={100} max={100000} value={maxLength}
-                          onChange={(e) => setMaxLength(Math.max(100, Number(e.target.value)))}
+                        <input type="number" min={300} max={100000} value={maxLength}
+                          onChange={(e) => setMaxLength(Math.max(300, Number(e.target.value)))}
                           className="w-20 text-sm border border-li-border rounded-md px-2 py-1 focus:outline-none focus:border-li-blue text-center" />
                       </div>
+                      <p className="text-[11px] text-gray-400">
+                        Splitting at <strong className="text-gray-600">{effectiveMaxLength.toLocaleString()} chars</strong>
+                        <span className="ml-1">({maxLength.toLocaleString()} − {LI_OVERHEAD} reserved for LinkedIn session overhead)</span>
+                      </p>
                     </div>
                   )}
 
@@ -748,7 +778,7 @@ export function SplitterPanel() {
                           {splitMode === "chunk" ? (
                             <>Will create <strong>{previewCount} URLs</strong>, each with up to {chunkSize} values.</>
                           ) : (
-                            <>Will create <strong>{previewCount} URLs</strong>, each capped at {maxLength.toLocaleString()} chars.</>
+                            <>Will create <strong>{previewCount} URLs</strong>, each under {effectiveMaxLength.toLocaleString()} chars.</>
                           )}
                           {" "}All other filters are copied unchanged.
                         </div>
@@ -764,10 +794,9 @@ export function SplitterPanel() {
             </div>
           </div>
 
-          {/* Group splitter — full width, only in group mode */}
           {splitMode === "group" && activeSplitFilter && (
             <GroupSplitter
-              model={parsed}
+              model={activeModel}
               filterType={activeSplitFilter}
               defMap={defMap}
               onResults={(results) => { setSplitResults(results); setCopiedIdx(null); }}
@@ -776,7 +805,6 @@ export function SplitterPanel() {
         </>
       )}
 
-      {/* Results */}
       {splitResults.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-3">
@@ -788,11 +816,9 @@ export function SplitterPanel() {
             </button>
           </div>
           {splitResults.map((r, i) => (
-            <SplitResultCard
-              key={i} index={i} total={splitResults.length}
+            <SplitResultCard key={i} index={i} total={splitResults.length}
               result={r} defMap={defMap} splitFilterType={activeSplitFilter}
-              isCopied={copiedIdx === i} onCopy={() => copyOne(i)}
-            />
+              isCopied={copiedIdx === i} onCopy={() => copyOne(i)} />
           ))}
         </div>
       )}
