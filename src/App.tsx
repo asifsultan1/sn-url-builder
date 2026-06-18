@@ -4,7 +4,10 @@ import type { Filter, SearchKind, SearchModel } from "./types";
 import { CATALOG, GROUP_ORDER } from "./data/catalog";
 import { FilterRow } from "./components/FilterRow";
 import { OutputPanel } from "./components/OutputPanel";
+import { SplitterPanel } from "./components/SplitterPanel";
 import { InfoTip } from "./components/InfoTip";
+
+type AppMode = "builder" | "splitter";
 
 type TabState = {
   keywords: string;
@@ -14,6 +17,7 @@ type TabState = {
 const emptyTab = (): TabState => ({ keywords: "", filters: {} });
 
 export default function App() {
+  const [appMode, setAppMode] = useState<AppMode>("builder");
   const [kind, setKind] = useState<SearchKind>("people");
   const [tabs, setTabs] = useState<Record<SearchKind, TabState>>({
     people: emptyTab(),
@@ -65,24 +69,48 @@ export default function App() {
             in
           </div>
           <h1 className="font-semibold text-lg">Sales Nav URL Builder</h1>
+
+          {/* App mode tabs */}
           <div className="ml-auto inline-flex rounded-md border border-li-border overflow-hidden text-sm">
-            {(["people", "company"] as const).map((k) => (
+            {(["builder", "splitter"] as const).map((m) => (
               <button
-                key={k}
+                key={m}
                 type="button"
-                onClick={() => setKind(k)}
+                onClick={() => setAppMode(m)}
                 className={`px-4 py-1.5 capitalize ${
-                  kind === k ? "bg-li-blue text-white" : "bg-white text-gray-600"
+                  appMode === m ? "bg-li-blue text-white" : "bg-white text-gray-600"
                 }`}
               >
-                {k}
+                {m}
               </button>
             ))}
           </div>
+
+          {/* People / company toggle — only shown in builder */}
+          {appMode === "builder" && (
+            <div className="inline-flex rounded-md border border-li-border overflow-hidden text-sm">
+              {(["people", "company"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setKind(k)}
+                  className={`px-4 py-1.5 capitalize ${
+                    kind === k ? "bg-li-blue text-white" : "bg-white text-gray-600"
+                  }`}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-4 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4">
+      <main className="max-w-6xl mx-auto px-4 py-4">
+      {appMode === "splitter" ? (
+        <SplitterPanel />
+      ) : (
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4">
         <div className="space-y-4">
           {/* Keywords */}
           <div className="bg-white border border-li-border rounded-lg p-3">
@@ -143,6 +171,8 @@ export default function App() {
             />
           </div>
         </div>
+      </div>
+      )}
       </main>
     </div>
   );
