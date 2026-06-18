@@ -156,9 +156,28 @@ export const FORTUNE: EnumOption[] = [
   { id: "4", label: "Fortune 251-500" },
 ];
 
-/** Currencies for ANNUAL_REVENUE selectedSubFilter. Only USD is confirmed. */
+/** Currencies for ANNUAL_REVENUE selectedSubFilter. Verified from SN UI. */
 export const REVENUE_CURRENCIES: EnumOption[] = [
-  { id: "USD", label: "USD (confirmed)" },
-  { id: "EUR", label: "EUR (unverified)" },
-  { id: "GBP", label: "GBP (unverified)" },
+  { id: "USD", label: "USD – $" },
+  { id: "AED", label: "AED – د.إ" },
+  { id: "AUD", label: "AUD – $" },
+  { id: "BRL", label: "BRL – $" },
+  { id: "CAD", label: "CAD – $" },
+  { id: "CNY", label: "CNY – ¥" },
+  { id: "DKK", label: "DKK – kr" },
+  { id: "EUR", label: "EUR – €" },
+  { id: "GBP", label: "GBP – £" },
+  { id: "HKD", label: "HKD – $" },
+  { id: "IDR", label: "IDR – Rp" },
+  { id: "ILS", label: "ILS – ₪" },
+  { id: "INR", label: "INR – ₹" },
+  { id: "JPY", label: "JPY – ¥" },
+  { id: "NOK", label: "NOK – kr" },
+  { id: "NZD", label: "NZD – $" },
+  { id: "RUB", label: "RUB – руб" },
+  { id: "SEK", label: "SEK – kr" },
+  { id: "SGD", label: "SGD – $" },
+  { id: "THB", label: "THB – ฿" },
+  { id: "TRY", label: "TRY – TL" },
+  { id: "TWD", label: "TWD – $" },
 ];

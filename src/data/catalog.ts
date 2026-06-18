@@ -80,7 +80,7 @@ export const COMPANY_CATALOG: FilterDef[] = [
     label: "Headcount growth",
     group: "Size & growth",
     kind: "range",
-    range: { hint: "Unverified: whether min/max are percentages or bucket indices is unconfirmed." },
+    range: { hint: "Enter percentage values — e.g. 10 to 50 means 10%–50% headcount growth." },
   },
   {
     type: "DEPARTMENT_HEADCOUNT",
