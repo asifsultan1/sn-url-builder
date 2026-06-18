@@ -87,16 +87,14 @@ export const COMPANY_CATALOG: FilterDef[] = [
     label: "Department headcount",
     group: "Size & growth",
     kind: "range",
-    unverified: true,
-    range: { subLabel: "Department code", hint: "Unverified: department-code mapping unconfirmed. Enter the numeric code." },
+    range: { subLabel: "Department code", hint: "Enter the numeric department code (e.g. 12 for Engineering). To find a code: apply this filter in Sales Navigator, then paste the resulting URL into the Splitter tab — the code will appear in the filter preview." },
   },
   {
     type: "DEPARTMENT_HEADCOUNT_GROWTH",
     label: "Department headcount growth",
     group: "Size & growth",
     kind: "range",
-    unverified: true,
-    range: { subLabel: "Department code", hint: "Unverified: department-code mapping unconfirmed. Enter the numeric code." },
+    range: { subLabel: "Department code", hint: "Enter the numeric department code. To find a code: apply this filter in Sales Navigator, then paste the resulting URL into the Splitter tab — the code will appear in the filter preview." },
   },
   { type: "NUM_OF_FOLLOWERS", label: "Number of followers", group: "Size & growth", kind: "enum", options: E.NUM_OF_FOLLOWERS, hint: "Size bracket of the company's LinkedIn follower count." },
   // Signals
