@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { Copy, Check, ExternalLink, Scissors, AlertTriangle, X, Download, Bookmark, Trash2, RotateCcw } from "lucide-react";
 import { parseUrl } from "../parser";
 import { buildUrl } from "../encoder";
@@ -448,6 +448,15 @@ export function SplitterPanel() {
   const [saveName, setSaveName] = useState("");
   const [showSaveInput, setShowSaveInput] = useState(false);
   const [excludedValues, setExcludedValues] = useState<Record<string, number[]>>({});
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const prevResultsLen = useRef(0);
+
+  useEffect(() => {
+    if (splitResults.length > 0 && prevResultsLen.current === 0) {
+      setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    }
+    prevResultsLen.current = splitResults.length;
+  }, [splitResults.length]);
 
   const parsed = useMemo(() => {
     if (!url.trim()) return null;
@@ -806,7 +815,7 @@ export function SplitterPanel() {
       )}
 
       {splitResults.length > 0 && (
-        <div className="space-y-3">
+        <div ref={resultsRef} className="space-y-3">
           <div className="flex items-center gap-3">
             <h3 className="font-semibold text-sm">{splitResults.length} Split URLs</h3>
             <button type="button" onClick={copyAll}
