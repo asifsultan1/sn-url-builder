@@ -54,7 +54,7 @@ export const FUNCTION: EnumOption[] = [
   { id: "23", label: "Real Estate" },
   { id: "24", label: "Research" },
   { id: "25", label: "Sales" },
-  { id: "26", label: "Customer Success and Support" },
+  { id: "26", label: "Support" },
 ];
 
 export const SENIORITY: EnumOption[] = [
