@@ -81,7 +81,18 @@ export function OutputPanel({ model, onReset }: Props) {
   const defMap = new Map(CATALOG[model.kind].map((d) => [d.type, d]));
 
   const copy = async () => {
-    await navigator.clipboard.writeText(url);
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      const el = document.createElement("textarea");
+      el.value = url;
+      el.style.position = "fixed";
+      el.style.opacity = "0";
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand("copy");
+      document.body.removeChild(el);
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };

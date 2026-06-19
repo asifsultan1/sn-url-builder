@@ -26,6 +26,7 @@ export function RangeEditor({ config, filter, onChange, type }: Props) {
           type="number"
           value={range?.min ?? ""}
           onChange={(e) => update({ min: Number(e.target.value) })}
+          onFocus={(e) => e.target.select()}
           placeholder="min"
           className="w-24 rounded-md border border-li-border px-2.5 py-1.5 text-sm focus:outline-none focus:border-li-blue"
         />
@@ -34,6 +35,7 @@ export function RangeEditor({ config, filter, onChange, type }: Props) {
           type="number"
           value={range?.max ?? ""}
           onChange={(e) => update({ max: Number(e.target.value) })}
+          onFocus={(e) => e.target.select()}
           placeholder="max"
           className="w-24 rounded-md border border-li-border px-2.5 py-1.5 text-sm focus:outline-none focus:border-li-blue"
         />

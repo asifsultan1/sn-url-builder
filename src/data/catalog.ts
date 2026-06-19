@@ -87,14 +87,14 @@ export const COMPANY_CATALOG: FilterDef[] = [
     label: "Department headcount",
     group: "Size & growth",
     kind: "range",
-    range: { sub: E.FUNCTION, subLabel: "Department", hint: "Select a department — codes are assumed to match LinkedIn's job function IDs (unconfirmed). Test by applying the filter in SN and checking the Splitter preview." },
+    range: { sub: E.FUNCTION, subLabel: "Department", defaultSub: "1", hint: "Select a department — codes are assumed to match LinkedIn's job function IDs (unconfirmed). Test by applying the filter in SN and checking the Splitter preview." },
   },
   {
     type: "DEPARTMENT_HEADCOUNT_GROWTH",
     label: "Department headcount growth",
     group: "Size & growth",
     kind: "range",
-    range: { sub: E.FUNCTION, subLabel: "Department", hint: "Select a department — codes are assumed to match LinkedIn's job function IDs (unconfirmed). Test by applying the filter in SN and checking the Splitter preview." },
+    range: { sub: E.FUNCTION, subLabel: "Department", defaultSub: "1", hint: "Enter percentage values (e.g. 10 to 50 means 10%–50% growth). Select a department — codes are assumed to match LinkedIn's job function IDs (unconfirmed)." },
   },
   { type: "NUM_OF_FOLLOWERS", label: "Number of followers", group: "Size & growth", kind: "enum", options: E.NUM_OF_FOLLOWERS, hint: "Size bracket of the company's LinkedIn follower count." },
   // Signals
